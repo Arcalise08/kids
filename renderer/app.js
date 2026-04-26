@@ -6,6 +6,8 @@ let state = { kids: [], weekStart: null };
 let currentKidId = null;
 let currentManageKidId = null;
 let currentViewDayIndex = null;
+let bedtimeKidList = [];
+let bedtimeKidIndex = 0;
 
 function getCurrentWeekStart() {
   const now = new Date();
@@ -206,10 +208,9 @@ function renderChores(kid) {
   });
 }
 
-async function markChore(kidId, choreId, status) {
+async function setChoreStatus(kidId, choreId, dayIdx, status) {
   const kid = getKid(kidId);
   const chore = kid.chores.find(c => c.id === choreId);
-  const dayIdx = currentViewDayIndex !== null ? currentViewDayIndex : getTodayIndex();
   if (!chore.days) chore.days = {};
   if (status === 'pending') {
     delete chore.days[dayIdx];
@@ -217,9 +218,14 @@ async function markChore(kidId, choreId, status) {
     chore.days[dayIdx] = status;
   }
   await save();
+}
+
+async function markChore(kidId, choreId, status) {
+  const dayIdx = currentViewDayIndex !== null ? currentViewDayIndex : getTodayIndex();
+  await setChoreStatus(kidId, choreId, dayIdx, status);
+  const kid = getKid(kidId);
   renderChores(kid);
   renderWeekStars(kid);
-
   if (status === 'done' && dayIdx === getTodayIndex() && kidHasStarOnDay(kid, dayIdx)) {
     showStarCelebration(kid.name);
   }
@@ -309,13 +315,15 @@ function renderManageChores(kid) {
     item.innerHTML = `
       <div class="manage-chore-header">
         <div class="manage-chore-name">${escHtml(chore.name)}</div>
-        <button class="btn btn-delete" data-id="${chore.id}">Delete</button>
+        <button class="btn-cleanup-toggle ${chore.isCleanup ? 'active' : ''}" title="Bedtime cleanup chore">🌙</button>
+        <button class="btn btn-delete">Delete</button>
       </div>
       <div class="manage-chore-days">
         ${DAYS.map((d, i) => `<button class="day-toggle ${assigned.includes(i) ? 'active' : ''}" data-day="${i}">${d}</button>`).join('')}
       </div>
     `;
     item.querySelector('.btn-delete').addEventListener('click', () => deleteChore(kid.id, chore.id));
+    item.querySelector('.btn-cleanup-toggle').addEventListener('click', () => toggleChoreCleanup(kid.id, chore.id));
     item.querySelectorAll('.day-toggle').forEach(btn => {
       btn.addEventListener('click', () => toggleChoreDay(kid.id, chore.id, parseInt(btn.dataset.day)));
     });
@@ -343,7 +351,7 @@ async function addChore() {
   const name = input.value.trim();
   if (!name || !currentManageKidId) return;
   const kid = getKid(currentManageKidId);
-  kid.chores.push({ id: uid(), name, assignedDays: [0,1,2,3,4,5,6], days: {} });
+  kid.chores.push({ id: uid(), name, assignedDays: [0,1,2,3,4,5,6], isCleanup: false, days: {} });
   input.value = '';
   await save();
   renderManageChores(kid);
@@ -354,6 +362,84 @@ async function deleteChore(kidId, choreId) {
   kid.chores = kid.chores.filter(c => c.id !== choreId);
   await save();
   renderManageChores(kid);
+}
+
+async function toggleChoreCleanup(kidId, choreId) {
+  const kid = getKid(kidId);
+  const chore = kid.chores.find(c => c.id === choreId);
+  chore.isCleanup = !chore.isCleanup;
+  await save();
+  renderManageChores(kid);
+}
+
+// BEDTIME CHECKLIST
+function openBedtimeChecklist() {
+  const todayIdx = getTodayIndex();
+  bedtimeKidList = state.kids.filter(kid =>
+    kid.chores.some(c => c.isCleanup && choreIsOnDay(c, todayIdx))
+  );
+  bedtimeKidIndex = 0;
+  renderBedtimeKid();
+  showView('bedtime');
+}
+
+function renderBedtimeKid() {
+  const content = document.getElementById('bedtime-content');
+
+  if (bedtimeKidList.length === 0) {
+    content.innerHTML = `<div class="empty-state"><p>No cleanup chores assigned for today. Mark chores as 🌙 in Manage Kids.</p></div>`;
+    return;
+  }
+
+  const todayIdx = getTodayIndex();
+  const kid = bedtimeKidList[bedtimeKidIndex];
+  const cleanupChores = kid.chores.filter(c => c.isCleanup && choreIsOnDay(c, todayIdx));
+  const isLast = bedtimeKidIndex === bedtimeKidList.length - 1;
+
+  content.innerHTML = `
+    <div class="bedtime-kid-header">
+      <div class="bedtime-kid-name">${escHtml(kid.name)}</div>
+      <div class="bedtime-kid-count">${bedtimeKidIndex + 1} of ${bedtimeKidList.length}</div>
+    </div>
+    <div id="bedtime-chores-list" class="bedtime-chores"></div>
+    <div class="bedtime-nav">
+      <button class="btn btn-bedtime-next" id="btn-bedtime-next">${isLast ? 'Done ✓' : 'Next →'}</button>
+    </div>
+  `;
+
+  const choresList = document.getElementById('bedtime-chores-list');
+  cleanupChores.forEach(chore => {
+    const status = (chore.days && chore.days[todayIdx]) || 'pending';
+    const item = document.createElement('div');
+    item.className = `chore-item ${status === 'done' ? 'done' : status === 'failed' ? 'failed' : ''}`;
+    item.innerHTML = `
+      <div class="chore-status-icon">${status === 'done' ? '✅' : status === 'failed' ? '❌' : '⬜'}</div>
+      <div class="chore-name">${escHtml(chore.name)}</div>
+      <div class="chore-buttons">
+        <button class="btn-check" title="Still done">✓</button>
+        <button class="btn-cross" title="Not done">✗</button>
+      </div>
+    `;
+    item.querySelector('.btn-check').addEventListener('click', async () => {
+      await setChoreStatus(kid.id, chore.id, todayIdx, 'done');
+      renderBedtimeKid();
+    });
+    item.querySelector('.btn-cross').addEventListener('click', async () => {
+      await setChoreStatus(kid.id, chore.id, todayIdx, 'failed');
+      renderBedtimeKid();
+    });
+    choresList.appendChild(item);
+  });
+
+  document.getElementById('btn-bedtime-next').addEventListener('click', () => {
+    if (isLast) {
+      showView('home');
+      renderHome();
+    } else {
+      bedtimeKidIndex++;
+      renderBedtimeKid();
+    }
+  });
 }
 
 // RESET WEEK
@@ -382,6 +468,8 @@ function escHtml(s) {
 
 // EVENT LISTENERS
 document.getElementById('btn-manage').addEventListener('click', openManage);
+document.getElementById('btn-bedtime').addEventListener('click', openBedtimeChecklist);
+document.getElementById('btn-bedtime-back').addEventListener('click', () => { showView('home'); renderHome(); });
 document.getElementById('btn-reset').addEventListener('click', resetWeek);
 document.getElementById('btn-back').addEventListener('click', () => { showView('home'); renderHome(); });
 document.getElementById('btn-back-manage').addEventListener('click', () => { showView('home'); renderHome(); });
