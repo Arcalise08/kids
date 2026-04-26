@@ -1,9 +1,11 @@
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const FULL_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const COLORS = ['#e94560', '#9b59b6', '#3498db', '#e67e22', '#1abc9c', '#e91e63', '#00bcd4'];
 
 let state = { kids: [], weekStart: null };
 let currentKidId = null;
 let currentManageKidId = null;
+let currentViewDayIndex = null;
 
 function getCurrentWeekStart() {
   const now = new Date();
@@ -46,13 +48,14 @@ function getKid(id) {
   return state.kids.find(k => k.id === id);
 }
 
-function kidHasStarToday(kid) {
-  const today = getTodayIndex();
-  return kid.chores.length > 0 && kid.chores.every(c => c.days && c.days[today] === 'done');
+function choreIsOnDay(chore, dayIdx) {
+  if (!chore.assignedDays) return true; // backward compat: treat unset as all days
+  return chore.assignedDays.includes(dayIdx);
 }
 
 function kidHasStarOnDay(kid, dayIdx) {
-  return kid.chores.length > 0 && kid.chores.every(c => c.days && c.days[dayIdx] === 'done');
+  const assigned = kid.chores.filter(c => choreIsOnDay(c, dayIdx));
+  return assigned.length > 0 && assigned.every(c => c.days && c.days[dayIdx] === 'done');
 }
 
 // HOME VIEW
@@ -70,6 +73,26 @@ function renderHome() {
   state.kids.forEach((kid, idx) => {
     const color = COLORS[idx % COLORS.length];
     const letter = kid.name.charAt(0).toUpperCase();
+    const todayIdx = getTodayIndex();
+    const todayChores = kid.chores.filter(c => choreIsOnDay(c, todayIdx));
+    const doneCount = todayChores.filter(c => c.days && c.days[todayIdx] === 'done').length;
+    const total = todayChores.length;
+
+    let summaryHtml;
+    if (total === 0) {
+      summaryHtml = `<div class="kid-chores-summary"><span class="summary-empty">No chores today</span></div>`;
+    } else {
+      const allDone = doneCount === total;
+      const progress = allDone
+        ? `<div class="chore-progress all-done">All done! ⭐</div>`
+        : `<div class="chore-progress">${doneCount} / ${total} done</div>`;
+      const items = todayChores.map(c => {
+        const status = (c.days && c.days[todayIdx]) || 'pending';
+        const icon = status === 'done' ? '✅' : status === 'failed' ? '❌' : '⬜';
+        return `<div class="kid-chore-preview ${status}"><span>${icon}</span><span class="preview-name">${escHtml(c.name)}</span></div>`;
+      }).join('');
+      summaryHtml = `<div class="kid-chores-summary">${progress}${items}</div>`;
+    }
 
     const card = document.createElement('div');
     card.className = 'kid-card';
@@ -77,6 +100,7 @@ function renderHome() {
       <div class="kid-avatar" style="background: linear-gradient(135deg, ${color}, ${shiftColor(color)})">${letter}</div>
       <div class="kid-card-name">${escHtml(kid.name)}</div>
       <div class="kid-week-stars">${DAYS.map((d, i) => `<span class="week-star ${kidHasStarOnDay(kid, i) ? 'earned' : ''}" title="${d}">⭐</span>`).join('')}</div>
+      ${summaryHtml}
     `;
     card.addEventListener('click', () => openKid(kid.id));
     list.appendChild(card);
@@ -94,49 +118,90 @@ function shiftColor(hex) {
 // KID VIEW
 function openKid(kidId) {
   currentKidId = kidId;
+  currentViewDayIndex = getTodayIndex();
   const kid = getKid(kidId);
   document.getElementById('kid-name-title').textContent = kid.name + "'s Chores";
   renderWeekStars(kid);
   renderChores(kid);
+  renderDayLabel();
   showView('kid');
+}
+
+function selectDay(dayIdx) {
+  currentViewDayIndex = dayIdx;
+  const kid = getKid(currentKidId);
+  renderWeekStars(kid);
+  renderChores(kid);
+  renderDayLabel();
+}
+
+function renderDayLabel() {
+  const label = document.getElementById('viewing-day-label');
+  const today = getTodayIndex();
+  if (currentViewDayIndex === today) {
+    label.textContent = FULL_DAYS[currentViewDayIndex] + ' — Today';
+    label.className = 'day-label-bar today-label';
+  } else {
+    label.textContent = FULL_DAYS[currentViewDayIndex];
+    label.className = 'day-label-bar past-label';
+  }
 }
 
 function renderWeekStars(kid) {
   const container = document.getElementById('week-stars');
-  container.innerHTML = DAYS.map((d, i) => `
-    <div class="day-badge ${kidHasStarOnDay(kid, i) ? 'earned' : ''}">
-      <span class="day-star">⭐</span>
-      <span>${d}</span>
-    </div>
-  `).join('');
+  const today = getTodayIndex();
+  container.innerHTML = '';
+  DAYS.forEach((d, i) => {
+    const badge = document.createElement('div');
+    badge.className = [
+      'day-badge',
+      kidHasStarOnDay(kid, i) ? 'earned' : '',
+      i === currentViewDayIndex ? 'selected' : '',
+      i === today ? 'today' : ''
+    ].filter(Boolean).join(' ');
+    badge.innerHTML = `<span class="day-star">⭐</span><span class="day-name">${d}</span>${i === today ? '<span class="today-dot">•</span>' : ''}`;
+    badge.addEventListener('click', () => selectDay(i));
+    container.appendChild(badge);
+  });
 }
 
 function renderChores(kid) {
   const list = document.getElementById('chores-list');
   const empty = document.getElementById('empty-chores');
+  const emptyMsg = empty.querySelector('p');
   list.innerHTML = '';
-  const today = getTodayIndex();
+  const dayIdx = currentViewDayIndex !== null ? currentViewDayIndex : getTodayIndex();
+  const dayChores = kid.chores.filter(c => choreIsOnDay(c, dayIdx));
 
   if (kid.chores.length === 0) {
+    emptyMsg.textContent = 'No chores yet! Go to Manage Kids to add chores.';
+    empty.classList.remove('hidden');
+    return;
+  }
+  if (dayChores.length === 0) {
+    emptyMsg.textContent = `No chores assigned for ${FULL_DAYS[dayIdx]}. Edit in Manage Kids to assign days.`;
     empty.classList.remove('hidden');
     return;
   }
   empty.classList.add('hidden');
 
-  kid.chores.forEach(chore => {
-    const status = (chore.days && chore.days[today]) || 'pending';
+  dayChores.forEach(chore => {
+    const status = (chore.days && chore.days[dayIdx]) || 'pending';
+    const marked = status !== 'pending';
     const item = document.createElement('div');
     item.className = `chore-item ${status === 'done' ? 'done' : status === 'failed' ? 'failed' : ''}`;
     item.innerHTML = `
       <div class="chore-status-icon">${status === 'done' ? '✅' : status === 'failed' ? '❌' : '⬜'}</div>
       <div class="chore-name">${escHtml(chore.name)}</div>
       <div class="chore-buttons">
-        <button class="btn-check" data-id="${chore.id}" title="Done">✓</button>
-        <button class="btn-cross" data-id="${chore.id}" title="Not done">✗</button>
+        <button class="btn-check" title="Done">✓</button>
+        <button class="btn-cross" title="Not done">✗</button>
+        ${marked ? `<button class="btn-chore-reset" title="Reset">↺</button>` : ''}
       </div>
     `;
     item.querySelector('.btn-check').addEventListener('click', () => markChore(kid.id, chore.id, 'done'));
     item.querySelector('.btn-cross').addEventListener('click', () => markChore(kid.id, chore.id, 'failed'));
+    if (marked) item.querySelector('.btn-chore-reset').addEventListener('click', () => markChore(kid.id, chore.id, 'pending'));
     list.appendChild(item);
   });
 }
@@ -144,14 +209,18 @@ function renderChores(kid) {
 async function markChore(kidId, choreId, status) {
   const kid = getKid(kidId);
   const chore = kid.chores.find(c => c.id === choreId);
-  const today = getTodayIndex();
+  const dayIdx = currentViewDayIndex !== null ? currentViewDayIndex : getTodayIndex();
   if (!chore.days) chore.days = {};
-  chore.days[today] = status;
+  if (status === 'pending') {
+    delete chore.days[dayIdx];
+  } else {
+    chore.days[dayIdx] = status;
+  }
   await save();
   renderChores(kid);
   renderWeekStars(kid);
 
-  if (status === 'done' && kidHasStarToday(kid)) {
+  if (status === 'done' && dayIdx === getTodayIndex() && kidHasStarOnDay(kid, dayIdx)) {
     showStarCelebration(kid.name);
   }
 }
@@ -234,17 +303,39 @@ function renderManageChores(kid) {
   const list = document.getElementById('manage-chores-list');
   list.innerHTML = '';
   kid.chores.forEach(chore => {
+    const assigned = chore.assignedDays || [0,1,2,3,4,5,6];
     const item = document.createElement('div');
     item.className = 'manage-chore-item';
     item.innerHTML = `
-      <div class="manage-chore-name">${escHtml(chore.name)}</div>
-      <div class="manage-chore-actions">
+      <div class="manage-chore-header">
+        <div class="manage-chore-name">${escHtml(chore.name)}</div>
         <button class="btn btn-delete" data-id="${chore.id}">Delete</button>
+      </div>
+      <div class="manage-chore-days">
+        ${DAYS.map((d, i) => `<button class="day-toggle ${assigned.includes(i) ? 'active' : ''}" data-day="${i}">${d}</button>`).join('')}
       </div>
     `;
     item.querySelector('.btn-delete').addEventListener('click', () => deleteChore(kid.id, chore.id));
+    item.querySelectorAll('.day-toggle').forEach(btn => {
+      btn.addEventListener('click', () => toggleChoreDay(kid.id, chore.id, parseInt(btn.dataset.day)));
+    });
     list.appendChild(item);
   });
+}
+
+async function toggleChoreDay(kidId, choreId, dayIdx) {
+  const kid = getKid(kidId);
+  const chore = kid.chores.find(c => c.id === choreId);
+  if (!chore.assignedDays) chore.assignedDays = [0,1,2,3,4,5,6];
+  const pos = chore.assignedDays.indexOf(dayIdx);
+  if (pos === -1) {
+    chore.assignedDays.push(dayIdx);
+    chore.assignedDays.sort((a, b) => a - b);
+  } else {
+    chore.assignedDays.splice(pos, 1);
+  }
+  await save();
+  renderManageChores(kid);
 }
 
 async function addChore() {
@@ -252,7 +343,7 @@ async function addChore() {
   const name = input.value.trim();
   if (!name || !currentManageKidId) return;
   const kid = getKid(currentManageKidId);
-  kid.chores.push({ id: uid(), name, days: {} });
+  kid.chores.push({ id: uid(), name, assignedDays: [0,1,2,3,4,5,6], days: {} });
   input.value = '';
   await save();
   renderManageChores(kid);

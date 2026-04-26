@@ -78,6 +78,21 @@ html, body {
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  transition: border-color 0.2s, background 0.2s, opacity 0.1s;
+  touch-action: manipulation;
+}
+
+.day-badge:active {
+  opacity: 0.65;
+}
+
+.day-badge.selected {
+  border-color: var(--gold);
+  background: rgba(255, 215, 0, 0.1);
 }
 
 .day-badge .day-star {
@@ -90,6 +105,29 @@ html, body {
 .day-badge.earned .day-star {
   filter: none;
   animation: pulse-star 1s ease;
+}
+
+.today-dot {
+  font-size: 0.65rem;
+  color: var(--gold);
+  line-height: 1;
+}
+
+.day-label-bar {
+  padding: 6px 24px;
+  background: var(--surface);
+  font-size: 0.95rem;
+  text-align: center;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  flex-shrink: 0;
+}
+
+.day-label-bar.today-label {
+  color: var(--gold);
+}
+
+.day-label-bar.past-label {
+  color: var(--text-dim);
 }
 
 @keyframes pulse-star {
@@ -209,6 +247,56 @@ html, body {
   filter: none;
 }
 
+.kid-chores-summary {
+  width: 100%;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.chore-progress {
+  font-size: 0.8rem;
+  font-weight: bold;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+
+.chore-progress.all-done {
+  color: var(--gold);
+}
+
+.summary-empty {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.kid-chore-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.kid-chore-preview.done .preview-name {
+  color: var(--green);
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.kid-chore-preview.failed .preview-name {
+  color: var(--red);
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
 /* KID CHORES VIEW */
 .chores-list {
   flex: 1;
@@ -271,6 +359,28 @@ html, body {
   transform: scale(0.9);
 }
 
+.btn-chore-reset {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.15);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 1.5rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, transform 0.1s;
+  touch-action: manipulation;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-chore-reset:active {
+  transform: scale(0.9);
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
 .chore-item.done .chore-name {
   color: var(--green);
 }
@@ -325,10 +435,26 @@ html, body {
   gap: 12px;
 }
 
-.manage-kid-item, .manage-chore-item {
+.manage-kid-item {
   background: var(--card);
   border-radius: var(--radius);
   padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.manage-chore-item {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.manage-chore-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -341,9 +467,40 @@ html, body {
   flex: 1;
 }
 
-.manage-kid-actions, .manage-chore-actions {
+.manage-kid-actions {
   display: flex;
   gap: 10px;
+}
+
+.manage-chore-days {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.day-toggle {
+  padding: 5px 10px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  font-weight: bold;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  touch-action: manipulation;
+}
+
+.day-toggle.active {
+  background: var(--green);
+  border-color: var(--green);
+  color: white;
+}
+
+.day-toggle:active {
+  opacity: 0.7;
 }
 
 .btn-edit-chores {
